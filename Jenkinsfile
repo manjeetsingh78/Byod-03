@@ -1,5 +1,8 @@
 pipeline {
     agent any
+    options {
+        skipDefaultCheckout(true)
+    }
     
     environment {
         TF_IN_AUTOMATION = 'true'
@@ -103,7 +106,6 @@ pipeline {
     post {
         always {
             echo "=== Pipeline execution completed ==="
-            cleanWs()
         }
         success {
             echo "=== Pipeline succeeded ==="
