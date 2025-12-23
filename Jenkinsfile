@@ -38,9 +38,9 @@ pipeline {
                         terraform init
 
                         echo === Displaying tfvars file ===
-                        if exist %BRANCH_NAME%.tfvars (
-                            type %BRANCH_NAME%.tfvars
-                        ) else (
+                        if exist dev.tfvars (
+                            type dev.tfvars
+                        )else (
                             echo WARNING: %BRANCH_NAME%.tfvars not found
                             dir *.tfvars
                         )
@@ -60,7 +60,8 @@ pipeline {
                 ]) {
                     bat '''
                         echo === Generating Terraform plan ===
-                        terraform plan -var-file=%BRANCH_NAME%.tfvars -out=tfplan
+                        terraform plan -var-file=dev.tfvars -out=tfplan
+
                     '''
                 }
             }
