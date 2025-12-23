@@ -1,13 +1,9 @@
 pipeline {
     agent any
-    options {
-        skipDefaultCheckout(true)
-    }
 
     environment {
         TF_IN_AUTOMATION = 'true'
         TF_CLI_ARGS = '-no-color'
-        SSH_CRED_ID = 'aws-deployer-ssh-key'
     }
 
     stages {
@@ -18,7 +14,7 @@ pipeline {
             }
         }
 
-        stage('Terraform Initialization') {
+        stage('Terraform Init') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -28,28 +24,17 @@ pipeline {
                     )
                 ]) {
                     bat '''
-                        echo === Current Directory ===
-                        cd
-
-                        echo === Listing files ===
-                        dir
-
-                        echo === Initializing Terraform ===
+                        echo === Terraform Init ===
                         terraform init
-
-                        echo === Displaying tfvars file ===
-                        if exist dev.tfvars (
-                            type dev.tfvars
-                        )else (
-                            echo WARNING: %BRANCH_NAME%.tfvars not found
-                            dir *.tfvars
-                        )
                     '''
                 }
             }
         }
 
-        stage('Terraform Plan') {
+        stage('Terraform Plan (dev)') {
+            when {
+                branch 'dev'
+            }
             steps {
                 withCredentials([
                     usernamePassword(
@@ -59,9 +44,8 @@ pipeline {
                     )
                 ]) {
                     bat '''
-                        echo === Generating Terraform plan ===
+                        echo === Terraform Plan ===
                         terraform plan -var-file=dev.tfvars -out=tfplan
-
                     '''
                 }
             }
@@ -72,8 +56,7 @@ pipeline {
                 branch 'dev'
             }
             steps {
-                input message: 'Do you want to proceed with terraform apply?',
-                      ok: 'Proceed'
+                input message: 'Approve Terraform Apply for DEV?', ok: 'Apply'
             }
         }
 
@@ -90,7 +73,7 @@ pipeline {
                     )
                 ]) {
                     bat '''
-                        echo === Applying Terraform changes ===
+                        echo === Terraform Apply ===
                         terraform apply -auto-approve tfplan
                     '''
                 }
@@ -100,13 +83,7 @@ pipeline {
 
     post {
         always {
-            echo "=== Pipeline execution completed ==="
-        }
-        success {
-            echo "=== Pipeline succeeded ==="
-        }
-        failure {
-            echo "=== Pipeline failed ==="
+            echo "Pipeline finished"
         }
     }
 }
