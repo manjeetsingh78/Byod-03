@@ -31,10 +31,7 @@ pipeline {
             }
         }
 
-        stage('Terraform Plan (dev)') {
-            when {
-                branch 'dev'
-            }
+        stage('Terraform Plan') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -52,18 +49,13 @@ pipeline {
         }
 
         stage('Validate Apply') {
-            when {
-                branch 'dev'
-            }
             steps {
-                input message: 'Approve Terraform Apply for DEV?', ok: 'Apply'
+                input message: 'Approve Terraform Apply for DEV?',
+                      ok: 'Apply'
             }
         }
 
         stage('Terraform Apply') {
-            when {
-                branch 'dev'
-            }
             steps {
                 withCredentials([
                     usernamePassword(
@@ -82,8 +74,11 @@ pipeline {
     }
 
     post {
-        always {
-            echo "Pipeline finished"
+        success {
+            echo "Pipeline completed successfully"
+        }
+        failure {
+            echo "Pipeline failed"
         }
     }
 }
