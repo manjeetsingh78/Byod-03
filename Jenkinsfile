@@ -1,5 +1,5 @@
 pipeline {
-    agent any
+    agent { label 'linux' }
 
     environment {
         TF_IN_AUTOMATION = 'true'
