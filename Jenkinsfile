@@ -1,6 +1,11 @@
 pipeline {
     agent { label 'linux' }
 
+    tools {
+        git 'Default'
+        terraform 'terraform'
+    }
+
     options {
         disableConcurrentBuilds()
         timestamps()
@@ -12,6 +17,7 @@ pipeline {
         AWS_REGION          = 'us-east-1'
         AWS_DEFAULT_REGION  = 'us-east-1'
     }
+
 
     stages {
 
