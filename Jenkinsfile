@@ -4,6 +4,7 @@ pipeline {
     tools {
         git 'Default'
         terraform 'terraform'
+        ansible 'ansible'
     }
 
     options {
