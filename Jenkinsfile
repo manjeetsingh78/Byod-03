@@ -150,15 +150,23 @@ pipeline {
 
     post {
         always {
-            sh 'rm -f dynamic_inventory.ini'
+            script {
+                if (fileExists('dynamic_inventory.ini')) {
+                    sh 'rm -f dynamic_inventory.ini'
+                }
+            }
         }
 
         failure {
-            sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
+            script {
+                sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
+            }
         }
 
         aborted {
-            sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
+            script {
+                sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
+            }
         }
 
         success {
