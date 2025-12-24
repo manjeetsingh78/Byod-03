@@ -1,22 +1,5 @@
 pipeline {
     agent { label 'linux' }
-    stages {
-        stage('Verify Ansible') {
-            steps {
-                sh '''
-                    which ansible
-                    which ansible-playbook
-                    ansible --version
-                '''
-            }
-        }
-    }
-
-    tools {
-        git 'Default'
-        terraform 'terraform'
-        ansible 'ansible'
-    }
 
     options {
         disableConcurrentBuilds()
@@ -30,12 +13,22 @@ pipeline {
         AWS_DEFAULT_REGION  = 'us-east-1'
     }
 
-
     stages {
 
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Verify Tools') {
+            steps {
+                sh '''
+                    echo "=== Tool Versions ==="
+                    git --version
+                    terraform version
+                    ansible --version
+                '''
             }
         }
 
@@ -48,9 +41,7 @@ pipeline {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )
                 ]) {
-                    sh '''
-                        terraform init -input=false
-                    '''
+                    sh 'terraform init -input=false'
                 }
             }
         }
@@ -75,14 +66,13 @@ pipeline {
             }
         }
 
-        stage('Validate Apply') {
+        stage('Approve Apply') {
             steps {
-                input message: 'Approve Terraform Apply for DEV?',
-                      ok: 'Apply'
+                input message: 'Approve Terraform Apply?', ok: 'Apply'
             }
         }
 
-        stage('Terraform Apply & Capture Outputs') {
+        stage('Terraform Apply') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -103,21 +93,25 @@ pipeline {
                             script: 'terraform output -raw instance_public_ip',
                             returnStdout: true
                         ).trim()
+
+                        echo "EC2 ID: ${env.INSTANCE_ID}"
+                        echo "EC2 IP: ${env.INSTANCE_IP}"
                     }
                 }
             }
         }
 
-        stage('Create Dynamic Inventory') {
+        stage('Create Ansible Inventory') {
             steps {
                 sh '''
                     echo "[splunk]" > dynamic_inventory.ini
                     echo "${INSTANCE_IP} ansible_user=ec2-user" >> dynamic_inventory.ini
+                    cat dynamic_inventory.ini
                 '''
             }
         }
 
-        stage('Wait for EC2 Health Check') {
+        stage('Wait for EC2') {
             steps {
                 sh '''
                     aws ec2 wait instance-status-ok \
@@ -144,10 +138,9 @@ pipeline {
             }
         }
 
-        stage('Validate Destroy') {
+        stage('Approve Destroy') {
             steps {
-                input message: 'Approve Terraform Destroy?',
-                      ok: 'Destroy'
+                input message: 'Approve Terraform Destroy?', ok: 'Destroy'
             }
         }
 
@@ -168,27 +161,19 @@ pipeline {
 
     post {
         always {
-            script {
-                if (fileExists('dynamic_inventory.ini')) {
-                    sh 'rm -f dynamic_inventory.ini'
-                }
-            }
+            sh 'rm -f dynamic_inventory.ini || true'
         }
 
         failure {
-            script {
-                sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
-            }
+            sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
         }
 
         aborted {
-            script {
-                sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
-            }
+            sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
         }
 
         success {
-            echo "BYOD-3 Pipeline completed successfully"
+            echo '✅ BYOD-3 Pipeline completed successfully'
         }
     }
 }
