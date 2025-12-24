@@ -1,10 +1,17 @@
 pipeline {
     agent { label 'linux' }
 
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+        ansiColor('xterm')
+    }
+
     environment {
-        TF_IN_AUTOMATION = 'true'
-        TF_CLI_ARGS     = '-no-color'
-        AWS_REGION      = 'us-east-1'
+        TF_IN_AUTOMATION    = 'true'
+        TF_CLI_ARGS         = '-no-color'
+        AWS_REGION          = 'us-east-1'
+        AWS_DEFAULT_REGION  = 'us-east-1'
     }
 
     stages {
@@ -25,10 +32,15 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        echo "=== Terraform Init ==="
-                        terraform init
+                        terraform init -input=false
                     '''
                 }
+            }
+        }
+
+        stage('Terraform Validate') {
+            steps {
+                sh 'terraform validate'
             }
         }
 
@@ -41,10 +53,7 @@ pipeline {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )
                 ]) {
-                    sh '''
-                        echo "=== Terraform Plan ==="
-                        terraform plan -var-file=dev.tfvars
-                    '''
+                    sh 'terraform plan -var-file=dev.tfvars'
                 }
             }
         }
@@ -66,10 +75,7 @@ pipeline {
                     )
                 ]) {
                     script {
-                        sh '''
-                            echo "=== Terraform Apply ==="
-                            terraform apply -auto-approve -var-file=dev.tfvars
-                        '''
+                        sh 'terraform apply -auto-approve -var-file=dev.tfvars'
 
                         env.INSTANCE_ID = sh(
                             script: 'terraform output -raw instance_id',
@@ -80,9 +86,6 @@ pipeline {
                             script: 'terraform output -raw instance_public_ip',
                             returnStdout: true
                         ).trim()
-
-                        echo "EC2 ID: ${env.INSTANCE_ID}"
-                        echo "EC2 IP: ${env.INSTANCE_IP}"
                     }
                 }
             }
@@ -92,8 +95,7 @@ pipeline {
             steps {
                 sh '''
                     echo "[splunk]" > dynamic_inventory.ini
-                    echo "${INSTANCE_IP} ansible_user=ubuntu" >> dynamic_inventory.ini
-                    cat dynamic_inventory.ini
+                    echo "${INSTANCE_IP} ansible_user=ec2-user" >> dynamic_inventory.ini
                 '''
             }
         }
@@ -102,8 +104,7 @@ pipeline {
             steps {
                 sh '''
                     aws ec2 wait instance-status-ok \
-                    --instance-ids ${INSTANCE_ID} \
-                    --region ${AWS_REGION}
+                    --instance-ids ${INSTANCE_ID}
                 '''
             }
         }
@@ -135,7 +136,15 @@ pipeline {
 
         stage('Terraform Destroy') {
             steps {
-                sh 'terraform destroy -auto-approve -var-file=dev.tfvars'
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'aws-creds',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    )
+                ]) {
+                    sh 'terraform destroy -auto-approve -var-file=dev.tfvars'
+                }
             }
         }
     }
