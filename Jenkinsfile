@@ -1,5 +1,16 @@
 pipeline {
     agent { label 'linux' }
+    stages {
+        stage('Verify Ansible') {
+            steps {
+                sh '''
+                    which ansible
+                    which ansible-playbook
+                    ansible --version
+                '''
+            }
+        }
+    }
 
     tools {
         git 'Default'
