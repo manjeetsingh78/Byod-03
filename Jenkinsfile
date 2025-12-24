@@ -3,7 +3,8 @@ pipeline {
 
     environment {
         TF_IN_AUTOMATION = 'true'
-        TF_CLI_ARGS = '-no-color'
+        TF_CLI_ARGS     = '-no-color'
+        AWS_REGION      = 'us-east-1'
     }
 
     stages {
@@ -23,8 +24,8 @@ pipeline {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )
                 ]) {
-                    bat '''
-                        echo === Terraform Init ===
+                    sh '''
+                        echo "=== Terraform Init ==="
                         terraform init
                     '''
                 }
@@ -40,9 +41,9 @@ pipeline {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )
                 ]) {
-                    bat '''
-                        echo === Terraform Plan ===
-                        terraform plan -var-file=dev.tfvars -out=tfplan
+                    sh '''
+                        echo "=== Terraform Plan ==="
+                        terraform plan -var-file=dev.tfvars
                     '''
                 }
             }
@@ -55,7 +56,7 @@ pipeline {
             }
         }
 
-        stage('Terraform Apply') {
+        stage('Terraform Apply & Capture Outputs') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -64,21 +65,96 @@ pipeline {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )
                 ]) {
-                    bat '''
-                        echo === Terraform Apply ===
-                        terraform apply -auto-approve tfplan
-                    '''
+                    script {
+                        sh '''
+                            echo "=== Terraform Apply ==="
+                            terraform apply -auto-approve -var-file=dev.tfvars
+                        '''
+
+                        env.INSTANCE_ID = sh(
+                            script: 'terraform output -raw instance_id',
+                            returnStdout: true
+                        ).trim()
+
+                        env.INSTANCE_IP = sh(
+                            script: 'terraform output -raw instance_public_ip',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "EC2 ID: ${env.INSTANCE_ID}"
+                        echo "EC2 IP: ${env.INSTANCE_IP}"
+                    }
                 }
+            }
+        }
+
+        stage('Create Dynamic Inventory') {
+            steps {
+                sh '''
+                    echo "[splunk]" > dynamic_inventory.ini
+                    echo "${INSTANCE_IP} ansible_user=ubuntu" >> dynamic_inventory.ini
+                    cat dynamic_inventory.ini
+                '''
+            }
+        }
+
+        stage('Wait for EC2 Health Check') {
+            steps {
+                sh '''
+                    aws ec2 wait instance-status-ok \
+                    --instance-ids ${INSTANCE_ID} \
+                    --region ${AWS_REGION}
+                '''
+            }
+        }
+
+        stage('Install Splunk') {
+            steps {
+                ansiblePlaybook(
+                    playbook: 'playbooks/splunk.yml',
+                    inventory: 'dynamic_inventory.ini'
+                )
+            }
+        }
+
+        stage('Test Splunk') {
+            steps {
+                ansiblePlaybook(
+                    playbook: 'playbooks/test-splunk.yml',
+                    inventory: 'dynamic_inventory.ini'
+                )
+            }
+        }
+
+        stage('Validate Destroy') {
+            steps {
+                input message: 'Approve Terraform Destroy?',
+                      ok: 'Destroy'
+            }
+        }
+
+        stage('Terraform Destroy') {
+            steps {
+                sh 'terraform destroy -auto-approve -var-file=dev.tfvars'
             }
         }
     }
 
     post {
-        success {
-            echo "Pipeline completed successfully"
+        always {
+            sh 'rm -f dynamic_inventory.ini'
         }
+
         failure {
-            echo "Pipeline failed"
+            sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
+        }
+
+        aborted {
+            sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
+        }
+
+        success {
+            echo "BYOD-3 Pipeline completed successfully"
         }
     }
 }
