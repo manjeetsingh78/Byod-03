@@ -110,15 +110,26 @@ pipeline {
                 '''
             }
         }
+        
 
         stage('Wait for EC2') {
             steps {
-                sh '''
-                    aws ec2 wait instance-status-ok \
-                    --instance-ids ${INSTANCE_ID}
-                '''
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'aws-creds',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    )
+                ]) {
+                    sh '''
+                        aws ec2 wait instance-status-ok \
+                        --instance-ids ${INSTANCE_ID} \
+                        --region ${AWS_REGION}
+                    '''
+                }
             }
-        }
+        }    
+
 
         stage('Install Splunk') {
             steps {
@@ -165,15 +176,32 @@ pipeline {
         }
 
         failure {
-            sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
+            withCredentials([
+                usernamePassword(
+                    credentialsId: 'aws-creds',
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )
+            ]) {
+                sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
+            }
         }
 
         aborted {
-            sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
+            withCredentials([
+                usernamePassword(
+                    credentialsId: 'aws-creds',
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )
+            ]) {
+                sh 'terraform destroy -auto-approve -var-file=dev.tfvars || true'
+            }
         }
 
         success {
             echo '✅ BYOD-3 Pipeline completed successfully'
         }
     }
+
 }
