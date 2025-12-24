@@ -10,7 +10,7 @@ output "instance_public_ip" {
 
 output "bucket_name" {
   description = "Name of the S3 bucket"
-  value       = aws_s3_bucket.example.id
+  value       = aws_s3_bucket.example.bucket
 }
 
 output "environment" {
